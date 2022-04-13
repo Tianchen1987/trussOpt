@@ -1,32 +1,95 @@
 import numpy as np
 import json
 from scipy.sparse import coo_matrix
+import os
 
+def areaFilter(glb, nodes, elem, a_opt,f_opt, fac):
+    aFilter = a_opt>fac
+
+    fElem = dict()
+    fElem['n0']=[]
+    fElem['n1']=[]
+    fElem['a']=a_opt[aFilter]
+    fElem['f']=f_opt[aFilter]
+    
+    nId =[]
+    fGlb = dict()
+    fGlb['nodes']=[]
+    fGlb['u']=[]
+    for n0, n1 in zip(elem['n0'][aFilter],elem['n1'][aFilter]):    
+
+        # filter out all the nodes that aren't useful
+        fGlb['u'].append(glb['u'][n0])       
+        fGlb['u'].append(glb['u'][n0+1]) 
+        fGlb['u'].append(glb['u'][n0+2])
+        fGlb['u'].append(glb['u'][n1])       
+        fGlb['u'].append(glb['u'][n1+1])   
+        fGlb['u'].append(glb['u'][n1+2])
+        
+        if [nodes[n0]] not in fGlb['nodes']:        
+            fGlb['nodes'].append(list(nodes[n0]))
+            fElem['n0'].append(len(fGlb['nodes'])-1)
+        else:
+            fElem['n0'].append(fGlb['nodes'].index(nodes[n0]))
+
+        if [nodes[n1]] not in fGlb['nodes']:
+                
+            fGlb['nodes'].append(list(nodes[n1]))
+            fElem['n1'].append(len(fGlb['nodes'])-1)
+        else:
+            fElem['n1'].append(fGlb['nodes'].index(nodes[n0]))
+
+    return [fGlb, fElem]
+
+def writeOutput(owd, glb,elem, inputUnit):
+    # Check whether the specified path exists or not
+    if not os.path.exists(owd):
+      # Create a new directory because it does not exist 
+      os.makedirs(owd)
+        
+    if inputUnit == 'm': # unit adjustment
+        uM = 1
+    else:
+        uM = 0.001
+    
+    aList = [ai*(uM**2) for ai in elem['a']]
+
+    nList = np.array(glb['nodes'])*uM
+
+    np.savetxt(owd+'members.csv', np.transpose(np.vstack([elem['n0'],elem['n1'],aList])), delimiter=',')
+    np.savetxt(owd+'nodes.csv', nList, delimiter=',')
 
 # plot 3D figure with the truss members in undeformed, and in deformed configurations
-def plotStructFun(glb, elem, inputData, inputUnit, a, f, plotting):
+def plotStructFun(glb, elem, nodes, inputUnit, a, f, plotting):
     
     from mpl_toolkits import mplot3d
     import matplotlib.pyplot as plt
     
-    deformation = inputData['nodes'] + np.reshape(glb['u'],(-1,3)) # from number of nodes x 3 to number of DOF x 1, in a [x0,y0,z0,x1,y1,z1]
+    deformation = nodes + np.reshape(glb['u'],(-1,3)) # from number of nodes x 3 to number of DOF x 1, in a [x0,y0,z0,x1,y1,z1]
     
-    fig = plt.figure(figsize=(12, 12))
-    ax = plt.axes(projection='3d')
-
+    fig = plt.figure(figsize=(6, 6))
+    if plotting['view']=='3d':
+        ax = plt.axes(projection='3d')
+    else:
+        ax = plt.axes()
     
     if plotting['deformed'] == 0 or plotting['deformed'] == 2:
         for i,[n0,n1] in enumerate(zip(elem['n0'],elem['n1'])):
-            if a[i]>10e-15:
-                x = [[inputData['nodes'][n0][i], inputData['nodes'][n1][i]] for i in [0,1,2]]
-                ax.plot3D(x[0],x[1],x[2], c='grey')
+            if a[i]>10e-10:
+                x = [[nodes[n0][i], nodes[n1][i]] for i in [0,1,2]]
+                if plotting['view']=='3d':
+                    ax.plot3D(x[0],x[1],x[2], c='grey')
+                else:
+                    ax.plot  (x[0],x[1], c='grey')
     
-    if inputUnit == 'm':
+    if inputUnit == 'm': # unit adjustment
         uM = 1
     else:
         uM = 0.001
         
     mtp = 0.5*2834.65 # meter to point
+    
+    fMod = f/max([abs(min(f)), max(f)]) # normalize force to 1
     
     if plotting['deformed'] == 1 or plotting['deformed'] == 2:
 
@@ -38,11 +101,18 @@ def plotStructFun(glb, elem, inputData, inputUnit, a, f, plotting):
                 c.append('b')
 
         for i,[n0,n1] in enumerate(zip(elem['n0'],elem['n1'])):
-            
             if a[i]>10e-15:
                 x = [[deformation[n0][i], deformation[n1][i]] for i in [0,1,2]]
-                ax.plot3D(x[0],x[1],x[2], c=c[i], linewidth=uM*mtp*2*np.sqrt(a[i]/np.pi))
-
+                if plotting['xsec'] == 'f':
+                    lw = fMod[i]*plotting['sf']['f']
+                elif plotting['xsec'] == 'a':
+                    lw = uM*mtp*2*np.sqrt(a[i]/np.pi)*plotting['sf']['a']
+                    
+                if plotting['view']=='3d':
+                    ax.plot3D(x[0],x[1],x[2], c=c[i], linewidth=lw)
+                else:
+                    ax.plot  (x[0],x[1], c=c[i], linewidth=lw)
+                    
     plt.show()
     
 def importData(cwd, inputUnit):
