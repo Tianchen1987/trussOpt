@@ -2,7 +2,9 @@ import numpy as np
 import json
 from scipy.sparse import coo_matrix
 import os
+
 def optTrussLP(glb, elem, num, mtd, yieldStress, minA, maxA):
+    import cvxpy as cp
     f_id  = np.ix_(glb['fDOF'])
     if mtd == 'scipy':
         c    = np.hstack((np.zeros(num['m']), elem['L']))
