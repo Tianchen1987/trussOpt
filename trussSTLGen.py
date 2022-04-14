@@ -9,11 +9,11 @@ import struct #For writing to bin
 import matplotlib as plt
 
 def main():
-    trussSTLGenObj=trussSTLGen('../sample_inputs/','coord_2.csv','conn_2.csv','test.stl',8, 'mm', False)
+    trussSTLGenObj=trussSTLGen('../sample_inputs/','coord_2.csv','conn_2.csv','test.stl',8, 'mm', False, 2.5)
 
 #----------------------------------------------
 class trussSTLGen(object):
-    def __init__(self,fPath,fCoord,fCon,fOut,iDiv, units, boolAscii):
+    def __init__(self,fPath,fCoord,fCon,fOut,iDiv, units, boolAscii, minR):
         '''
             input:
             fPath: path of the input file
@@ -38,7 +38,17 @@ class trussSTLGen(object):
         #sR=[[i for i in j[2:3]] for j in reader]
         #sR=np.array(sR).astype('float')
         sA = reader[:,2:3].flatten()
-        sR = np.sqrt(sA/np.pi)*uM
+        sRa = np.sqrt(sA/np.pi)*uM
+        
+        sR = []
+        for sRi in list(sRa):
+            if sRi< minR:
+                sRi = minR
+                sR.append(minR)
+            else:
+                sR.append(sRi)
+        
+        sR = np.array(sR)
         iNumBars=len(sE)
         x1=[]
         x2=[]

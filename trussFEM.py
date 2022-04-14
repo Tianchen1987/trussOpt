@@ -2,6 +2,54 @@ import numpy as np
 import json
 from scipy.sparse import coo_matrix
 import os
+def optTrussLP(glb, elem, num, mtd, yieldStress, minA, maxA):
+    f_id  = np.ix_(glb['fDOF'])
+    if mtd == 'scipy':
+        c    = np.hstack((np.zeros(num['m']), elem['L']))
+
+        A_eq = np.hstack((glb['A'][f_id], np.zeros((len(glb['fDOF']),num['m']))))
+        b_eq = -glb['F'][f_id]
+
+        A_ub = np.zeros((num['m']*2, num['m']*2))
+        b_ub = np.zeros(num['m']*2)
+
+        lb   = np.zeros(num['m']*2)
+        ub   = np.zeros(num['m']*2)
+
+        for i in np.arange(num['m']):
+            A_ub[i,          i]          = -1.
+            A_ub[i,          i+num['m']] = -yieldStress
+            A_ub[i+num['m'], i]          =  1.
+            A_ub[i+num['m'], i+num['m']] = -yieldStress
+
+            lb[i]          = None
+            ub[i]          = None
+            lb[i+num['m']] = minA
+            ub[i+num['m']] = maxA
+            
+        bounds= [(ubi,lbi) for ubi,lbi in zip(lb,ub)]
+
+        from scipy.optimize import linprog
+        res = linprog(c, A_ub=A_ub, b_ub=b_ub, A_eq=A_eq, b_eq=b_eq, bounds = bounds)
+        a_opt = res['x'][num['m']:]
+        f_opt = res['x'][0:num['m']]
+        sol = res['fun']
+        
+    elif mtd =='cvx':
+        # Import packages.
+        a = cp.Variable(num['m'])
+        f = cp.Variable(num['m'])
+        
+        prob = cp.Problem(cp.Minimize(elem['L'].T@a), \
+                          [- np.eye(num['m'])*yieldStress/2 @ a <= f] + \
+                          [ f <= np.eye(num['m'])*yieldStress/2 @ a] + \
+                          [glb['A'][f_id] @ f == -glb['F'][f_id]] + \
+                          [a>=minA] + \
+                          [a<=maxA])      # equilibrium constraint
+        sol=prob.solve()
+        a_opt = a.value
+        f_opt = f.value
+    return [a_opt,f_opt, sol]
 
 def areaFilter(glb, nodes, elem, a_opt,f_opt, fac):
     aFilter = a_opt>fac
